@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>売上シミュレーター</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ページ全体のレイアウトコンテナ -->
+<div class="wrap">
+  <!-- タイトルとテーマ切替 -->
+  <div class="page-header">
+    <h1>売上シミュレーター</h1>
+    <button class="theme-toggle" id="theme-toggle" aria-label="テーマ切替" title="ダークモード切替">
+      <svg class="icon-moon" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>
+      </svg>
+    </button>
+  </div>
+  <p class="sub">業種・施策を設定して売上目標から必要な投資額と効果を試算します</p>
+
+  <!-- 操作手順のガイド -->
+  <details class="guide">
+    <summary class="guide-summary">使い方ガイド <span class="guide-badge">?</span></summary>
+    <div class="guide-body">
+      <ol class="guide-steps">
+        <li><strong>業種プリセット</strong>を選ぶと全項目が初期値として自動入力されます。実績値や商材特性に合わせて個別に調整してください。</li>
+        <li><strong>試算モード</strong>を選択します。<br>
+            目標逆算モードは必要投資を、予算試算モードは到達売上を算出します。</li>
+        <li><strong>基本設定</strong>で目標売上・客単価・流入別CVR・運用期間・粗利率を設定します。</li>
+        <li><strong>広告設定</strong>で集客チャネル・CPC・広告予算上限を設定します。<br>
+            チャネル選択では平均CPCの初期値を反映し、CVRは基本設定で調整します。<br>
+            上限に達した場合は未達分が警告で表示されます。</li>
+        <li><strong>コンテンツ・SEO設定</strong>で月間記事本数・単価・運用費を設定します。<br>
+            SEO 流入は序盤を抑えた加速カーブで立ち上がり、ヒット率を加味します。</li>
+        <li><strong>結果サマリー</strong>で投資額・広告起因ROAS・ROI・累積未達額を確認できます。</li>
+        <li><strong>グラフ</strong>で広告・広告残留・SEOアクセスの推移と累積売上を確認できます。</li>
+      </ol>
+      <div class="guide-glossary">
+        <span><strong>CVR</strong>：流入ごとに異なる成約率（広告CVR / SEOCVR）</span>
+        <span><strong>CPC</strong>：広告 1 クリックあたりの費用</span>
+        <span><strong>ROAS</strong>：(広告直販売上 + 広告残留売上) ÷ 広告費</span>
+        <span><strong>ROI</strong>：(粗利 − 総投資額) ÷ 総投資額 × 100%</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- 入力セクション: 業種プリセット / 基本設定 -->
+  <div class="sec-row">
+    <div class="sec">
+      <div class="sec-title">業種プリセット</div>
+      <div class="preset-wrap" id="presets"></div>
+      <p class="note">プリセットは業種別の初期値です。実績や商材に合わせて個別に調整してください。CVR・粗利率・CPCは推奨レンジを意識して確認することを推奨します。</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">基本設定</div>
+      <div class="row">
+        <label for="mode">試算モード</label>
+        <select id="mode">
+          <option value="target">目標売上から逆算</option>
+          <option value="budget">月予算から売上試算</option>
+        </select>
+      </div>
+      <div class="row"><label for="target">目標売上（万円/月）</label><input type="range" id="target" min="50" max="10000" step="50" value="1000"><span class="val" id="v-target">1,000万円</span></div>
+      <div class="row" id="row-budget"><label for="budget">月間マーケ予算（万円/月）</label><input type="range" id="budget" min="20" max="5000" step="10" value="500"><span class="val" id="v-budget">500万円</span></div>
+      <div class="row"><label for="unit">客単価（円）</label><input type="range" id="unit" min="1000" max="500000" step="1000" value="40000"><span class="val" id="v-unit">40,000円</span></div>
+      <div class="row"><label for="cvr-ad">広告CVR（%）</label><input type="range" id="cvr-ad" min="0.1" max="20" step="0.1" value="2.5"><span class="val" id="v-cvr-ad">2.5%</span></div>
+      <div class="row"><label for="cvr-seo">SEOCVR（%）</label><input type="range" id="cvr-seo" min="0.1" max="20" step="0.1" value="1.8"><span class="val" id="v-cvr-seo">1.8%</span></div>
+      <div class="row"><label for="gross">粗利率（%）</label><input type="range" id="gross" min="10" max="95" step="1" value="55"><span class="val" id="v-gross">55%</span></div>
+      <div class="row"><label for="months">運用期間（ヶ月）</label><input type="range" id="months" min="1" max="24" step="1" value="3"><span class="val" id="v-months">3ヶ月</span></div>
+    </div>
+  </div>
+
+  <!-- 入力セクション: 広告設定 / コンテンツ・SEO設定 -->
+  <div class="sec-row">
+    <div class="sec">
+      <div class="sec-title">広告設定</div>
+      <div class="row">
+        <label for="ch-select">広告チャネル（CPC初期値）</label>
+        <select id="ch-select">
+          <option value="search">検索広告（リスティング）</option>
+          <option value="sns">SNS広告（Instagram/Meta）</option>
+          <option value="display">ディスプレイ広告</option>
+          <option value="youtube">YouTube広告</option>
+          <option value="none">広告なし</option>
+        </select>
+      </div>
+      <div class="row" id="row-cpc"><label for="cpc">平均CPC（円）</label><input type="range" id="cpc" min="10" max="2000" step="10" value="261"><span class="val" id="v-cpc">261円</span></div>
+      <div class="row" id="row-adbudget"><label for="adbudget">広告予算上限（万円/月）</label><input type="range" id="adbudget" min="10" max="3000" step="10" value="400"><span class="val" id="v-adbudget">400万円</span></div>
+      <div class="row" id="row-adfee"><label for="adfee">広告運用手数料（万円/月）</label><input type="range" id="adfee" min="0" max="100" step="1" value="0"><span class="val" id="v-adfee">0万円</span></div>
+      <p class="note">チャネル切替で平均CPCの初期値が変わります。CVRは基本設定で調整してください。</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">コンテンツ・SEO設定</div>
+      <div class="row"><label for="arts">月間記事・コンテンツ本数</label><input type="range" id="arts" min="0" max="200" step="5" value="30"><span class="val" id="v-arts">30本</span></div>
+      <div class="row"><label for="artprice">コンテンツ単価（円）</label><input type="range" id="artprice" min="5000" max="200000" step="5000" value="40000"><span class="val" id="v-artprice">40,000円</span></div>
+      <div class="row"><label for="seofee">SEO・サイト運用費（万円/月）</label><input type="range" id="seofee" min="0" max="300" step="5" value="55"><span class="val" id="v-seofee">55万円</span></div>
+      <div class="row"><label for="other">その他施策費（万円/月）</label><input type="range" id="other" min="0" max="200" step="5" value="0"><span class="val" id="v-other">0万円</span></div>
+      <div class="row"><label for="setup">導入初期費用（万円/全体）</label><input type="range" id="setup" min="0" max="500" step="5" value="75"><span class="val" id="v-setup">75万円</span></div>
+    </div>
+  </div>
+
+  <!-- 出力セクション: 結果サマリー / 推移グラフ -->
+  <div class="sec-row sec-row--result">
+    <div class="sec">
+      <div class="sec-title">結果サマリー</div>
+      <p class="warn" id="warn-main"></p>
+      <div class="cards" id="kpis"></div>
+      <div class="divider"></div>
+      <table aria-label="費用内訳">
+        <thead><tr><th style="width:40%">費目</th><th class="r" style="width:20%">月額</th><th class="c" style="width:10%">期間</th><th class="r" style="width:30%">合計</th></tr></thead>
+        <tbody id="tbody" aria-busy="true"></tbody>
+      </table>
+      <p class="note" style="margin-top:.75rem">※ ROASは広告直販売上と広告残留売上を広告費で割った広告起因効率です。ROIは粗利率を加味した投資利益率です。予算試算モードでは到達売上・達成率を中心に確認してください。利益判断は人件費・固定費を別途加味してください。</p>
+    </div>
+
+    <div class="sec">
+      <div class="sec-title">月別アクセス数・売上推移（推定）</div>
+      <div class="ch-label">棒グラフ（単月）：広告 / 広告残留 / SEOアクセス　折れ線（累積）：推定累積売上</div>
+      <div id="chart-wrap"></div>
+      <div class="ch-legend">
+        <span><span class="dot dot-ad"></span>広告アクセス（単月）</span>
+        <span><span class="dot dot-residual"></span>広告残留アクセス（単月）</span>
+        <span><span class="dot dot-seo"></span>SEOアクセス（単月）</span>
+        <span><span class="dot dot-sales"></span>累積売上（右軸）</span>
+        <span><span class="dot dot-goal"></span>累積売上目標</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- シミュレーションロジックと描画処理 -->
+<script>
+const presets = [
+  {label:'クリニック・医療',mode:'target',target:1200,budget:600,unit:35000,cvrAd:3.4,cvrSeo:2.3,gross:58,months:6,cpc:700,adbudget:450,adfee:12,arts:18,artprice:35000,seofee:35,other:10,setup:40,ch:'search',seoDemandFactor:1.25,seoLagMonths:3},
+  {label:'EC・通販',mode:'target',target:500,budget:280,unit:9000,cvrAd:2.8,cvrSeo:1.9,gross:45,months:6,cpc:140,adbudget:200,adfee:8,arts:20,artprice:22000,seofee:22,other:8,setup:20,ch:'display',seoDemandFactor:1.05,seoLagMonths:2},
+  {label:'不動産',mode:'target',target:900,budget:700,unit:80000,cvrAd:1.8,cvrSeo:1.1,gross:62,months:6,cpc:980,adbudget:600,adfee:15,arts:12,artprice:50000,seofee:55,other:15,setup:30,ch:'search',seoDemandFactor:0.85,seoLagMonths:4},
+  {label:'飲食・カフェ',mode:'target',target:220,budget:120,unit:3200,cvrAd:4.8,cvrSeo:3.0,gross:60,months:3,cpc:120,adbudget:80,adfee:3,arts:10,artprice:12000,seofee:8,other:18,setup:10,ch:'sns',seoDemandFactor:0.7,seoLagMonths:2},
+  {label:'スクール・教育',mode:'target',target:300,budget:220,unit:50000,cvrAd:2.6,cvrSeo:1.8,gross:63,months:4,cpc:280,adbudget:160,adfee:8,arts:16,artprice:25000,seofee:18,other:8,setup:20,ch:'search',seoDemandFactor:1.0,seoLagMonths:3},
+  {label:'IT（B2B）',mode:'target',target:850,budget:650,unit:120000,cvrAd:1.5,cvrSeo:0.9,gross:72,months:6,cpc:1100,adbudget:550,adfee:20,arts:18,artprice:60000,seofee:65,other:12,setup:50,ch:'search',seoDemandFactor:0.9,seoLagMonths:4},
+  {label:'美容・サロン',mode:'target',target:420,budget:260,unit:18000,cvrAd:3.0,cvrSeo:2.1,gross:57,months:4,cpc:260,adbudget:180,adfee:7,arts:15,artprice:22000,seofee:20,other:12,setup:20,ch:'sns',seoDemandFactor:0.95,seoLagMonths:2},
+  {label:'カスタム',mode:'target',target:500,budget:300,unit:20000,cvrAd:2.5,cvrSeo:1.8,gross:55,months:6,cpc:300,adbudget:220,adfee:8,arts:12,artprice:25000,seofee:25,other:10,setup:25,ch:'search',seoDemandFactor:1.0,seoLagMonths:3},
+];
+
+// SEOの基礎係数: 1記事あたりの狙いKW数、平均検索数、想定CTR、ヒット率。
+// 実値に合わせる場合はこの4つを先に調整すると全体の感度が合いやすい。
+const KW_PER_ART = 12;
+const SEARCH_VOL = 160;
+const CTR_AVG = 0.02;
+const HIT_RATE = 0.3;
+// SEO立ち上がりの標準月数と上限アクセス。
+const SEO_RAMP_MONTHS = 8;
+const MAX_SEO_ACCESS = 350000;
+// 広告流入の残留モデル。
+// FROM_AD: 当月広告流入のうち翌月以降に残る比率、DECAY: 前月残留が次月に残る比率。
+// RESIDUAL_CVR_WEIGHT: 残留流入のCVR効率(直販広告CVR比)。
+const RESIDUAL_FROM_AD = 0.22;
+const RESIDUAL_DECAY = 0.55;
+const RESIDUAL_CVR_WEIGHT = 0.6;
+
+const ids = ['mode','target','budget','unit','cvr-ad','cvr-seo','gross','months','cpc','adbudget','adfee','arts','artprice','seofee','other','setup'];
+const $ = id => document.getElementById(id);
+const fmt = n => Math.round(n).toLocaleString();
+const fmtM = n => {
+  const v = n / 10000;
+  if (v <= 0) return '0';
+  if (v < 1) return v.toFixed(1);
+  return Math.round(v).toLocaleString();
+};
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const exp = Math.floor(Math.log10(v));
+  const mag = Math.pow(10, exp);
+  const norm = v / mag;
+  if (norm <= 1) return mag;
+  if (norm <= 2) return 2 * mag;
+  if (norm <= 5) return 5 * mag;
+  return 10 * mag;
+}
+
+function fmtSales(n) {
+  if (n <= 0) return '0';
+  if (n >= 100000000) {
+    const v = n / 100000000;
+    return (Number.isInteger(v) ? v : v.toFixed(1)) + '億';
+  }
+  return Math.round(n / 10000).toLocaleString() + '万';
+}
+
+function cssVar(name, fallback) {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fallback;
+}
+
+function seoRamp(month) {
+  if (month <= 1) return 0;
+  const t = Math.min((month - 1) / SEO_RAMP_MONTHS, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function calcSeoAccess(month, cumArts, artprice, seofee) {
+  // 品質(単価)、運用体制(SEO費)、ドメイン成熟(月齢)を係数化。
+  const qualityFactor = Math.min(0.75 + artprice / 120000, 1.5);
+  const seoFactor = Math.min(0.7 + seofee / 3500000, 1.6);
+  const ageFactor = Math.min(0.8 + month / 24, 1.2);
+  const raw = (cumArts * HIT_RATE) * KW_PER_ART * SEARCH_VOL * CTR_AVG * seoRamp(month) * qualityFactor * seoFactor * ageFactor;
+  return Math.round(Math.min(raw, MAX_SEO_ACCESS));
+}
+
+const DEFAULT_SEO_DEMAND_FACTOR = 1.0;
+const DEFAULT_SEO_LAG_MONTHS = 3;
+let activePresetLabel = presets[0].label;
+
+// 業種×チャネルのCPC初期値。
+// ここは「初期値」であり、実運用はスライダーで上書きする想定。
+const channelCpcDefaults = {
+  'クリニック・医療': {search: 700, sns: 260, display: 180, youtube: 120},
+  'EC・通販': {search: 180, sns: 120, display: 95, youtube: 80},
+  '不動産': {search: 980, sns: 360, display: 300, youtube: 220},
+  '飲食・カフェ': {search: 90, sns: 50, display: 70, youtube: 45},
+  'スクール・教育': {search: 280, sns: 170, display: 140, youtube: 100},
+  'IT（B2B）': {search: 1100, sns: 480, display: 420, youtube: 260},
+  '美容・サロン': {search: 240, sns: 90, display: 110, youtube: 70},
+  'カスタム': {search: 300, sns: 180, display: 120, youtube: 60},
+};
+
+function getDefaultCpc(presetLabel, channel) {
+  if (!presetLabel || channel === 'none') return null;
+  const byPreset = channelCpcDefaults[presetLabel];
+  if (byPreset && channel in byPreset) return byPreset[channel];
+  return null;
+}
+
+function buildPresets() {
+  const wrap = $('presets');
+  presets.forEach((p, i) => {
+    const b = document.createElement('button');
+    b.className = 'preset' + (i === 0 ? ' on' : '');
+    b.textContent = p.label;
+    b.onclick = () => {
+      document.querySelectorAll('.preset').forEach(x => x.classList.remove('on'));
+      b.classList.add('on');
+      applyPreset(p);
+      update();
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function applyPreset(p) {
+  activePresetLabel = p.label;
+  $('mode').value = p.mode;
+  $('target').value = p.target;
+  $('budget').value = p.budget;
+  $('unit').value = p.unit;
+  $('cvr-ad').value = p.cvrAd;
+  $('cvr-seo').value = p.cvrSeo;
+  $('gross').value = p.gross;
+  $('months').value = p.months;
+  $('cpc').value = p.cpc;
+  $('adbudget').value = p.adbudget;
+  $('adfee').value = p.adfee;
+  $('arts').value = p.arts;
+  $('artprice').value = p.artprice;
+  $('seofee').value = p.seofee;
+  $('other').value = p.other;
+  $('setup').value = p.setup;
+  $('ch-select').value = p.ch;
+}
+
+function setAdRowsMuted(muted) {
+  $('row-cpc').classList.toggle('muted', muted);
+  $('row-adbudget').classList.toggle('muted', muted);
+  $('row-adfee').classList.toggle('muted', muted);
+  $('cpc').disabled = muted;
+  $('adbudget').disabled = muted;
+  $('adfee').disabled = muted;
+}
+
+function setModeRows() {
+  const isBudgetMode = $('mode').value === 'budget';
+  $('row-budget').classList.toggle('muted', !isBudgetMode);
+  $('budget').disabled = !isBudgetMode;
+}
+
+function simulate(cfg) {
+  const displayMonths = Math.max(cfg.months + 4, 8);
+  let cumArts = 0;
+  let cumSales = 0;
+  let residualAccess = 0;
+  let adCapHits = 0;
+  const contentAdds = [];
+
+  const monthly = [];
+  // 目標売上から必要成約数を逆算。
+  const neededConversions = cfg.target / cfg.unit;
+  // 参考値としての必要アクセス: 広告CVRとSEOCVRの平均で近似。
+  const blendedCvr = Math.max((cfg.cvrAd + cfg.cvrSeo) / 2, 0.001);
+  const neededAccess = Math.round(neededConversions / blendedCvr);
+
+  for (let m = 1; m <= displayMonths; m++) {
+    const inPeriod = m <= cfg.months;
+    const artsThisMonth = inPeriod ? cfg.arts : 0;
+    contentAdds.push(artsThisMonth);
+    cumArts += artsThisMonth;
+
+    const lagEligibleMonths = Math.max(m - cfg.seoLagMonths, 0);
+    const laggedCumArts = lagEligibleMonths > 0
+      ? contentAdds.slice(0, lagEligibleMonths).reduce((s, v) => s + v, 0)
+      : 0;
+    // SEOは「公開後ラグ」を経た記事のみ寄与。さらに業種需要係数を乗算。
+    const seoAccess = calcSeoAccess(m, laggedCumArts, cfg.artprice, cfg.seofee) * cfg.seoDemandFactor;
+    const residualForMonth = residualAccess;
+    let adAccess = 0;
+    let adSpend = 0;
+
+    if (inPeriod && !cfg.isNoAd) {
+      const capYen = cfg.adbudget;
+
+      if (cfg.mode === 'target') {
+        // 目標逆算モード: SEO+残留で不足する成約を広告で補完。
+        const baseConv = seoAccess * cfg.cvrSeo + residualForMonth * cfg.cvrAd * RESIDUAL_CVR_WEIGHT;
+        const reqConv = Math.max(neededConversions - baseConv, 0);
+        const reqAccess = reqConv / cfg.cvrAd;
+        const capAccess = capYen / cfg.cpc;
+        adAccess = Math.min(reqAccess, capAccess);
+        adSpend = adAccess * cfg.cpc;
+        if (reqAccess > capAccess + 1) adCapHits += 1;
+      } else {
+        // 予算試算モード: 固定費を先に差し引いた残額のみ広告へ配分。
+        const fixedMonthly = cfg.arts * cfg.artprice + cfg.seofee + cfg.other + cfg.adfee;
+        const freeForAds = Math.max(cfg.budget - fixedMonthly, 0);
+        const spendable = Math.min(freeForAds, capYen);
+        adSpend = spendable;
+        adAccess = adSpend / cfg.cpc;
+      }
+    }
+
+    const seoConv = seoAccess * cfg.cvrSeo;
+    const adConv = adAccess * cfg.cvrAd;
+    const residualConv = residualForMonth * cfg.cvrAd * RESIDUAL_CVR_WEIGHT;
+    const monthSales = (seoConv + adConv + residualConv) * cfg.unit;
+    cumSales += monthSales;
+
+    monthly.push({
+      m,
+      adAccess: Math.round(adAccess),
+      residualAccess: Math.round(residualForMonth),
+      seoAccess,
+      adSales: Math.round(adConv * cfg.unit),
+      residualSales: Math.round(residualConv * cfg.unit),
+      totalAccess: Math.round(adAccess + residualForMonth + seoAccess),
+      sales: Math.round(monthSales),
+      cumSales: Math.round(cumSales),
+      goalCumSales: Math.round(cfg.target * Math.min(m, cfg.months)),
+    });
+
+    residualAccess = residualForMonth * RESIDUAL_DECAY + adAccess * RESIDUAL_FROM_AD;
+  }
+
+  const periodData = monthly.slice(0, cfg.months);
+  const adSpendTotal = Math.round(periodData.reduce((s, x) => s + x.adAccess * cfg.cpc, 0));
+  const adFeeTotal = cfg.isNoAd ? 0 : cfg.adfee * cfg.months;
+  const artTotal = cfg.arts * cfg.artprice * cfg.months;
+  const seoTotal = cfg.seofee * cfg.months;
+  const otherTotal = cfg.other * cfg.months;
+  const setupTotal = cfg.setup;
+  const totalInvest = adSpendTotal + adFeeTotal + artTotal + seoTotal + otherTotal + setupTotal;
+  const salesTotal = Math.round(periodData.reduce((s, x) => s + x.sales, 0));
+  const adAttributedSalesTotal = Math.round(periodData.reduce((s, x) => s + x.adSales + x.residualSales, 0));
+  const residualSalesTotal = Math.round(periodData.reduce((s, x) => s + x.residualSales, 0));
+  const adDirectSalesTotal = Math.max(adAttributedSalesTotal - residualSalesTotal, 0);
+  const targetSalesTotal = cfg.target * cfg.months;
+  const unmetSalesTotal = Math.max(targetSalesTotal - salesTotal, 0);
+  const grossProfit = Math.round(salesTotal * cfg.grossMargin);
+  // ROAS(広告起因): (広告直販 + 広告残留) / 広告費
+  const roas = adSpendTotal > 0 ? adAttributedSalesTotal / adSpendTotal : null;
+  // ROI(粗利ベース): ((売上×粗利率) - 総投資額) / 総投資額 × 100
+  const roi = totalInvest > 0 ? ((grossProfit - totalInvest) / totalInvest) * 100 : null;
+  const totalConversions = unitSafeDivide(salesTotal, cfg.unit);
+  const attainmentRate = targetSalesTotal > 0 ? (salesTotal / targetSalesTotal) * 100 : 0;
+
+  return {
+    monthly,
+    neededAccess,
+    neededConversions: Math.round(neededConversions),
+    adCapHits,
+    unmetSalesTotal,
+    adSpendTotal,
+    adFeeTotal,
+    artTotal,
+    seoTotal,
+    otherTotal,
+    setupTotal,
+    totalInvest,
+    salesTotal,
+    adAttributedSalesTotal,
+    adDirectSalesTotal,
+    residualSalesTotal,
+    targetSalesTotal,
+    totalConversions,
+    attainmentRate,
+    grossProfit,
+    roas,
+    roi,
+  };
+}
+
+function unitSafeDivide(num, den) {
+  if (!den) return 0;
+  return Math.round(num / den);
+}
+
+function renderChart(data) {
+  const maxM = data.length;
+  const maxAccess = niceMax(Math.max(...data.map(d => d.totalAccess), 1000));
+  const maxCumSales = niceMax(Math.max(...data.map(d => d.cumSales), ...data.map(d => d.goalCumSales), 100000));
+
+  const W = 560;
+  const H = 220;
+  const pL = 62;
+  const pB = 38;
+  const pT = 28;
+  const pR = 78;
+  const innerW = W - pL - pR;
+  const innerH = H - pB - pT;
+  const xStep = innerW / Math.max(maxM - 1, 1);
+  const yS = v => H - pB - (v / maxAccess) * innerH;
+  const yR = v => H - pB - (v / maxCumSales) * innerH;
+
+  const cAd = cssVar('--color-ad', '#EA580C');
+  const cResidual = cssVar('--color-ad-residual', '#FDBA74');
+  const cSeo = cssVar('--color-seo', '#16A34A');
+  const cSales = cssVar('--color-sales', '#7C3AED');
+  const cGoal = cssVar('--color-danger', '#DC2626');
+  const cTextSub = cssVar('--text-sub', '#64748B');
+  const cBorder = cssVar('--border', '#E2E8F0');
+
+  const bars = data.map((d, i) => {
+    const bw = Math.max(xStep * 0.5, 6);
+    const cx = pL + i * xStep;
+    const adH = (d.adAccess / maxAccess) * innerH;
+    const resH = (d.residualAccess / maxAccess) * innerH;
+    const seoH = (d.seoAccess / maxAccess) * innerH;
+    const adY = H - pB - adH;
+    const resY = adY - resH;
+    const seoY = resY - seoH;
+
+    const adRect = adH > 0 ? `<rect x="${(cx - bw / 2).toFixed(1)}" y="${adY.toFixed(1)}" width="${bw.toFixed(1)}" height="${adH.toFixed(1)}" fill="${cAd}" fill-opacity="0.82" rx="1"/>` : '';
+    const resRect = resH > 0 ? `<rect x="${(cx - bw / 2).toFixed(1)}" y="${resY.toFixed(1)}" width="${bw.toFixed(1)}" height="${resH.toFixed(1)}" fill="${cResidual}" fill-opacity="0.75" rx="0"/>` : '';
+    const seoRect = seoH > 0 ? `<rect x="${(cx - bw / 2).toFixed(1)}" y="${seoY.toFixed(1)}" width="${bw.toFixed(1)}" height="${seoH.toFixed(1)}" fill="${cSeo}" fill-opacity="0.82" rx="0"/>` : '';
+    return adRect + resRect + seoRect;
+  }).join('');
+
+  const yTicks = [0, maxAccess / 2, maxAccess];
+  const yLines = yTicks.map(v => `<line x1="${pL}" y1="${yS(v).toFixed(1)}" x2="${W - pR}" y2="${yS(v).toFixed(1)}" stroke="${cBorder}" stroke-width="0.8"/>`).join('');
+  const yLabels = yTicks.map(v => `<text x="${pL - 8}" y="${(yS(v) + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="${cTextSub}">${fmt(v)}</text>`).join('');
+  const xLabels = data.map((d, i) => `<text x="${(pL + i * xStep).toFixed(1)}" y="${H - pB + 16}" text-anchor="middle" font-size="11" fill="${cTextSub}">${d.m}M</text>`).join('');
+
+  const salesPts = data.map((d, i) => `${(pL + i * xStep).toFixed(1)},${yR(d.cumSales).toFixed(1)}`).join(' ');
+  const goalPts = data.map((d, i) => `${(pL + i * xStep).toFixed(1)},${yR(d.goalCumSales).toFixed(1)}`).join(' ');
+  const salesDots = data.map((d, i) => `<circle cx="${(pL + i * xStep).toFixed(1)}" cy="${yR(d.cumSales).toFixed(1)}" r="2" fill="${cSales}"/>`).join('');
+
+  const rVals = [0, maxCumSales / 2, maxCumSales];
+  const rLabels = rVals.map((v, i) => `<text x="${W - pR + 8}" y="${(yS(yTicks[i]) + 4).toFixed(1)}" text-anchor="start" font-size="10" fill="${cSales}">${fmtSales(v)}</text>`).join('');
+
+  $('chart-wrap').innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">
+      ${yLines}
+      ${bars}
+      <polyline points="${salesPts}" fill="none" stroke="${cSales}" stroke-width="2"/>
+      <polyline points="${goalPts}" fill="none" stroke="${cGoal}" stroke-width="1.5" stroke-dasharray="4,3"/>
+      ${salesDots}
+      <line x1="${pL}" y1="${pT}" x2="${pL}" y2="${H - pB}" stroke="${cBorder}" stroke-width="0.75"/>
+      <line x1="${W - pR}" y1="${pT}" x2="${W - pR}" y2="${H - pB}" stroke="${cSales}" stroke-opacity="0.4" stroke-width="0.75"/>
+      <line x1="${pL}" y1="${H - pB}" x2="${W - pR}" y2="${H - pB}" stroke="${cBorder}" stroke-width="0.75"/>
+      ${yLabels}
+      ${xLabels}
+      ${rLabels}
+      <text x="${pL + 2}" y="${pT - 8}" font-size="9.5" fill="${cTextSub}" text-anchor="start">月間アクセス数（単月）</text>
+      <text x="${W - pR - 2}" y="${pT - 8}" font-size="9.5" fill="${cSales}" text-anchor="end">累積売上（右軸）</text>
+    </svg>
+  `;
+}
+
+function update() {
+  const mode = $('mode').value;
+  const target = +$('target').value * 10000;
+  const budget = +$('budget').value * 10000;
+  const unit = +$('unit').value;
+  const cvrAd = +$('cvr-ad').value / 100;
+  const cvrSeo = +$('cvr-seo').value / 100;
+  const grossMargin = +$('gross').value / 100;
+  const months = +$('months').value;
+  const cpc = +$('cpc').value;
+  const adbudget = +$('adbudget').value * 10000;
+  const adfee = +$('adfee').value * 10000;
+  const arts = +$('arts').value;
+  const artprice = +$('artprice').value;
+  const seofee = +$('seofee').value * 10000;
+  const other = +$('other').value * 10000;
+  const setup = +$('setup').value * 10000;
+  const ch = $('ch-select').value;
+  const isNoAd = ch === 'none';
+
+  setAdRowsMuted(isNoAd);
+  setModeRows();
+
+  $('v-target').textContent = fmt(+$('target').value) + '万円';
+  $('v-budget').textContent = fmt(+$('budget').value) + '万円';
+  $('v-unit').textContent = fmt(unit) + '円';
+  $('v-cvr-ad').textContent = (+$('cvr-ad').value).toFixed(1) + '%';
+  $('v-cvr-seo').textContent = (+$('cvr-seo').value).toFixed(1) + '%';
+  $('v-gross').textContent = fmt(+$('gross').value) + '%';
+  $('v-months').textContent = months + 'ヶ月';
+  $('v-cpc').textContent = isNoAd ? '—' : fmt(cpc) + '円';
+  $('v-adbudget').textContent = isNoAd ? '—' : fmt(+$('adbudget').value) + '万円';
+  $('v-adfee').textContent = isNoAd ? '—' : fmt(+$('adfee').value) + '万円';
+  $('v-arts').textContent = arts + '本';
+  $('v-artprice').textContent = fmt(artprice) + '円';
+  $('v-seofee').textContent = fmt(+$('seofee').value) + '万円';
+  $('v-other').textContent = fmt(+$('other').value) + '万円';
+  $('v-setup').textContent = fmt(+$('setup').value) + '万円';
+
+  const sim = simulate({
+    mode,
+    target,
+    budget,
+    unit,
+    cvrAd,
+    cvrSeo,
+    grossMargin,
+    months,
+    cpc,
+    adbudget,
+    adfee,
+    arts,
+    artprice,
+    seofee,
+    other,
+    setup,
+    ch,
+    isNoAd,
+    seoDemandFactor: presets.find(p => p.label === activePresetLabel)?.seoDemandFactor || DEFAULT_SEO_DEMAND_FACTOR,
+    seoLagMonths: presets.find(p => p.label === activePresetLabel)?.seoLagMonths || DEFAULT_SEO_LAG_MONTHS,
+  });
+
+  const warns = [];
+  // 警告はモード別に意味が異なるため、目標逆算/予算試算で文言を分岐。
+  if (mode === 'target' && sim.neededAccess > 5000000) warns.push('▲ 必要アクセス数（参考値）が非常に大きい値です。客単価・CVR・目標売上の組み合わせをご確認ください。');
+  if (mode === 'target' && sim.adCapHits > 0 && sim.unmetSalesTotal > 0) warns.push('▲ 広告予算上限に達した月があり、期間累積の目標売上に未達の可能性があります。');
+  if (mode === 'target' && sim.unmetSalesTotal > 0 && sim.adCapHits === 0) warns.push('▲ 現在のCVR・SEO条件では期間累積の目標売上に未達です。CVRまたは運用期間の見直しを推奨します。');
+  if (mode === 'budget' && sim.unmetSalesTotal > 0) warns.push('▲ 予算条件では目標累積売上に届いていません。達成率と費用配分を確認してください。');
+  if (mode === 'budget' && sim.unmetSalesTotal === 0) warns.push('▲ 予算条件で累積目標売上を達成見込みです。');
+  if (isNoAd && mode === 'target') warns.push('▲ 広告なし設定です。SEOと残留効果のみで目標達成を判定しています。');
+
+  const warnEl = $('warn-main');
+  warnEl.innerHTML = warns.join('<br>');
+  warnEl.classList.toggle('show', warns.length > 0);
+
+  const avgAdSpend = months > 0 ? Math.round(sim.adSpendTotal / months) : 0;
+  const roiStr = sim.roi === null ? 'N/A' : fmt(sim.roi) + '%';
+  const roasStr = sim.roas === null ? 'N/A' : sim.roas.toFixed(2) + 'x';
+  const roiClass = sim.roi === null ? '' : sim.roi >= 0 ? 'green' : 'red';
+  const unmetStr = sim.unmetSalesTotal > 0 ? '▼ ' + fmtM(sim.unmetSalesTotal) + '万円' : '▲ 0万円';
+
+  const baseCards = `
+    <div class="card"><div class="lbl">月間広告費（平均）</div><div class="num amber">${isNoAd ? '—' : fmtM(avgAdSpend) + '万円'}</div></div>
+    <div class="card"><div class="lbl">期間総投資額</div><div class="num red">${fmtM(sim.totalInvest)}万円</div></div>
+    <div class="card"><div class="lbl">期間売上（推定）</div><div class="num green">${fmtM(sim.salesTotal)}万円</div></div>
+    <div class="card"><div class="lbl">広告直販売上</div><div class="num">${fmtM(sim.adDirectSalesTotal)}万円</div></div>
+    <div class="card"><div class="lbl">広告残留売上</div><div class="num">${fmtM(sim.residualSalesTotal)}万円</div></div>
+    <div class="card"><div class="lbl">ROAS（広告起因）</div><div class="num">${roasStr}</div></div>
+    <div class="card"><div class="lbl">ROI（粗利ベース）</div><div class="num ${roiClass}">${roiStr}</div></div>
+    <div class="card"><div class="lbl">累積目標未達額</div><div class="num red">${unmetStr}</div></div>
+  `;
+
+  const targetCards = `
+    <div class="card"><div class="lbl">月間必要成約数</div><div class="num blue">${fmt(sim.neededConversions)}件</div></div>
+    <div class="card"><div class="lbl">想定月間必要アクセス（参考）</div><div class="num blue">${fmt(sim.neededAccess)}</div></div>
+    ${baseCards}
+  `;
+
+  const budgetCards = `
+    <div class="card"><div class="lbl">期間到達成約数（推定）</div><div class="num blue">${fmt(sim.totalConversions)}件</div></div>
+    <div class="card"><div class="lbl">目標達成率</div><div class="num blue">${fmt(sim.attainmentRate)}%</div></div>
+    ${baseCards}
+  `;
+
+  $('kpis').innerHTML = mode === 'budget' ? budgetCards : targetCards;
+
+  const rows = [
+    ['広告出稿費', isNoAd ? '—' : fmtM(avgAdSpend) + '万円', months + 'ヶ月', isNoAd ? '—' : fmtM(sim.adSpendTotal) + '万円', ''],
+    ['広告運用手数料', isNoAd ? '—' : fmtM(adfee) + '万円', months + 'ヶ月', isNoAd ? '—' : fmtM(sim.adFeeTotal) + '万円', ''],
+    ['コンテンツ制作費（' + arts + '本/月）', fmtM(arts * artprice) + '万円', months + 'ヶ月', fmtM(sim.artTotal) + '万円', ''],
+    ['SEO・サイト運用費', fmtM(seofee) + '万円', months + 'ヶ月', fmtM(sim.seoTotal) + '万円', ''],
+    ['その他施策費', other === 0 ? '—' : fmtM(other) + '万円', months + 'ヶ月', sim.otherTotal === 0 ? '—' : fmtM(sim.otherTotal) + '万円', ''],
+    ['導入初期費用', '—', '一括', fmtM(sim.setupTotal) + '万円', ''],
+    ['粗利（売上×粗利率）', '—', months + 'ヶ月', fmtM(sim.grossProfit) + '万円', 'total'],
+  ];
+
+  $('tbody').removeAttribute('aria-busy');
+  $('tbody').innerHTML = rows.map(r => {
+    const cls = r[4] === 'total' ? 'total' : '';
+    return `<tr class="${cls}"><td>${r[0]}</td><td class="r">${r[1]}</td><td class="c">${r[2]}</td><td class="r">${r[3]}</td></tr>`;
+  }).join('') + `<tr class="total"><td colspan="3"><strong>総投資額</strong></td><td class="r"><strong>${fmtM(sim.totalInvest)}万円</strong></td></tr>`;
+
+  renderChart(sim.monthly);
+}
+
+const chDefaultCpc = {search:700,sns:180,display:120,youtube:60};
+
+ids.forEach(id => {
+  const el = $(id);
+  if (el) {
+    el.addEventListener('input', update);
+    el.addEventListener('change', update);
+  }
+});
+
+$('ch-select').addEventListener('change', () => {
+  const ch = $('ch-select').value;
+  const mappedCpc = getDefaultCpc(activePresetLabel, ch);
+  if (mappedCpc !== null) {
+    $('cpc').value = mappedCpc;
+  } else if (ch in chDefaultCpc) {
+    $('cpc').value = chDefaultCpc[ch];
+  }
+  update();
+});
+
+buildPresets();
+applyPreset(presets[0]);
+update();
+
+// ---------- ダークモード ----------
+(function () {
+  const html = document.documentElement;
+  const btn = document.getElementById('theme-toggle');
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  if (saved === 'dark' || (!saved && prefersDark)) {
+    html.classList.add('dark');
+    html.setAttribute('data-theme', 'dark');
+  } else {
+    html.setAttribute('data-theme', 'light');
+  }
+
+  btn.addEventListener('click', () => {
+    html.classList.toggle('dark');
+    const next = html.classList.contains('dark') ? 'dark' : 'light';
+    html.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    update();
+  });
+})();
+</script>
+</body>
+</html>
