@@ -212,7 +212,9 @@ function calcSeoAccess(month, cumArts, artprice, seofee) {
   const qualityFactor = Math.min(0.75 + artprice / 120000, 1.5);
   const seoFactor = Math.min(0.7 + seofee / 3500000, 1.6);
   const ageFactor = Math.min(0.8 + month / 24, 1.2);
+  // raw = (累積記事数×ヒット率)×記事あたりKW数×検索数×CTR×ランプ係数×品質係数×SEO体制係数×月齢係数
   const raw = (cumArts * HIT_RATE) * KW_PER_ART * SEARCH_VOL * CTR_AVG * seoRamp(month) * qualityFactor * seoFactor * ageFactor;
+  // SEOアクセス = min(raw, 上限アクセス)
   return Math.round(Math.min(raw, MAX_SEO_ACCESS));
 }
 
@@ -301,9 +303,9 @@ function simulate(cfg) {
   const contentAdds = [];
 
   const monthly = [];
-  // 目標売上から必要成約数を逆算。
+  // 必要成約数 = 目標売上 ÷ 客単価
   const neededConversions = cfg.target / cfg.unit;
-  // 参考値としての必要アクセス: 広告CVRとSEOCVRの平均で近似。
+  // 参考必要アクセス = 必要成約数 ÷ 平均CVR, 平均CVR = (広告CVR + SEOCVR) / 2
   const blendedCvr = Math.max((cfg.cvrAd + cfg.cvrSeo) / 2, 0.001);
   const neededAccess = Math.round(neededConversions / blendedCvr);
 
@@ -327,27 +329,40 @@ function simulate(cfg) {
       const capYen = cfg.adbudget;
 
       if (cfg.mode === 'target') {
-        // 目標逆算モード: SEO+残留で不足する成約を広告で補完。
+        // 目標逆算モード: 不足成約を広告で補完。
+        // baseConv = SEOアクセス×SEOCVR + 残留アクセス×広告CVR×残留CVR重み
         const baseConv = seoAccess * cfg.cvrSeo + residualForMonth * cfg.cvrAd * RESIDUAL_CVR_WEIGHT;
+        // reqConv = max(必要成約 - baseConv, 0)
         const reqConv = Math.max(neededConversions - baseConv, 0);
+        // reqAccess = reqConv ÷ 広告CVR
         const reqAccess = reqConv / cfg.cvrAd;
+        // capAccess = 広告予算上限 ÷ CPC
         const capAccess = capYen / cfg.cpc;
         adAccess = Math.min(reqAccess, capAccess);
+        // 広告費 = 広告アクセス × CPC
         adSpend = adAccess * cfg.cpc;
         if (reqAccess > capAccess + 1) adCapHits += 1;
       } else {
-        // 予算試算モード: 固定費を先に差し引いた残額のみ広告へ配分。
+        // 予算試算モード: 残予算のみ広告へ配分。
+        // fixedMonthly = 制作費 + SEO費 + その他費 + 運用手数料
         const fixedMonthly = cfg.arts * cfg.artprice + cfg.seofee + cfg.other + cfg.adfee;
+        // freeForAds = max(月予算 - fixedMonthly, 0)
         const freeForAds = Math.max(cfg.budget - fixedMonthly, 0);
+        // spendable = min(freeForAds, 広告予算上限)
         const spendable = Math.min(freeForAds, capYen);
         adSpend = spendable;
+        // 広告アクセス = 広告費 ÷ CPC
         adAccess = adSpend / cfg.cpc;
       }
     }
 
+    // SEO成約 = SEOアクセス × SEOCVR
     const seoConv = seoAccess * cfg.cvrSeo;
+    // 広告成約 = 広告アクセス × 広告CVR
     const adConv = adAccess * cfg.cvrAd;
+    // 残留成約 = 残留アクセス × 広告CVR × 残留CVR重み
     const residualConv = residualForMonth * cfg.cvrAd * RESIDUAL_CVR_WEIGHT;
+    // 当月売上 = (SEO成約 + 広告成約 + 残留成約) × 客単価
     const monthSales = (seoConv + adConv + residualConv) * cfg.unit;
     cumSales += monthSales;
 
@@ -364,29 +379,45 @@ function simulate(cfg) {
       goalCumSales: Math.round(cfg.target * Math.min(m, cfg.months)),
     });
 
+    // 翌月残留アクセス = 前月残留×減衰率 + 当月広告アクセス×残留化率
     residualAccess = residualForMonth * RESIDUAL_DECAY + adAccess * RESIDUAL_FROM_AD;
   }
 
   const periodData = monthly.slice(0, cfg.months);
+  // 広告費合計 = Σ(各月広告アクセス × CPC)
   const adSpendTotal = Math.round(periodData.reduce((s, x) => s + x.adAccess * cfg.cpc, 0));
+  // 運用手数料合計 = 月額手数料 × 月数（広告なしは0）
   const adFeeTotal = cfg.isNoAd ? 0 : cfg.adfee * cfg.months;
+  // 制作費合計 = 月間本数 × 単価 × 月数
   const artTotal = cfg.arts * cfg.artprice * cfg.months;
+  // SEO費合計 = SEO月額費 × 月数
   const seoTotal = cfg.seofee * cfg.months;
+  // その他費合計 = その他月額費 × 月数
   const otherTotal = cfg.other * cfg.months;
+  // 初期費用合計 = 導入費（一括）
   const setupTotal = cfg.setup;
+  // 総投資額 = 広告費 + 運用手数料 + 制作費 + SEO費 + その他費 + 初期費用
   const totalInvest = adSpendTotal + adFeeTotal + artTotal + seoTotal + otherTotal + setupTotal;
+  // 期間売上 = Σ各月売上
   const salesTotal = Math.round(periodData.reduce((s, x) => s + x.sales, 0));
+  // 広告起因売上 = Σ(広告直販 + 広告残留)
   const adAttributedSalesTotal = Math.round(periodData.reduce((s, x) => s + x.adSales + x.residualSales, 0));
   const residualSalesTotal = Math.round(periodData.reduce((s, x) => s + x.residualSales, 0));
+  // 広告直販売上 = 広告起因売上 - 広告残留売上
   const adDirectSalesTotal = Math.max(adAttributedSalesTotal - residualSalesTotal, 0);
+  // 期間目標売上 = 月目標売上 × 月数
   const targetSalesTotal = cfg.target * cfg.months;
+  // 未達売上 = max(期間目標売上 - 期間売上, 0)
   const unmetSalesTotal = Math.max(targetSalesTotal - salesTotal, 0);
+  // 粗利 = 期間売上 × 粗利率
   const grossProfit = Math.round(salesTotal * cfg.grossMargin);
   // ROAS(広告起因): (広告直販 + 広告残留) / 広告費
   const roas = adSpendTotal > 0 ? adAttributedSalesTotal / adSpendTotal : null;
   // ROI(粗利ベース): ((売上×粗利率) - 総投資額) / 総投資額 × 100
   const roi = totalInvest > 0 ? ((grossProfit - totalInvest) / totalInvest) * 100 : null;
+  // 期間成約数 = 期間売上 ÷ 客単価
   const totalConversions = unitSafeDivide(salesTotal, cfg.unit);
+  // 達成率 = 期間売上 ÷ 期間目標売上 × 100
   const attainmentRate = targetSalesTotal > 0 ? (salesTotal / targetSalesTotal) * 100 : 0;
 
   return {
